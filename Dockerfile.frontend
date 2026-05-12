@@ -1,0 +1,14 @@
+FROM node:20-slim AS builder
+
+WORKDIR /app
+COPY package.json pnpm-workspace.yaml ./
+COPY frontend/ ./frontend/
+COPY lib/ ./lib/
+
+RUN npm install -g pnpm && pnpm install --no-frozen-lockfile
+RUN pnpm --filter @workspace/dashboard run build
+
+FROM nginx:alpine
+COPY --from=builder /app/frontend/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 3000
