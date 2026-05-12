@@ -23,7 +23,7 @@ export default function TopBar() {
           className="w-5 h-5 rounded-full shrink-0"
           style={{ background: "var(--c-purple)" }}
         />
-        <span className="font-semibold text-sm text-white tracking-tight">Mega AI</span>
+        <span className="font-semibold text-sm text-white tracking-tight">Neurostack AI</span>
       </div>
 
       {/* Query input */}
