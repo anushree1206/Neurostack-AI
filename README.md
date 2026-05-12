@@ -1,4 +1,4 @@
-# Mega AI
+# NEUROSTACK AI
 
 **Real-time multi-agent LLM orchestration and evaluation** — a containerized system with dynamic routing, SSE streaming, tool calling with retries, a custom 15-case eval harness, and a self-improving prompt loop (human-in-the-loop approvals).
 
