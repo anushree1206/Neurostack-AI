@@ -219,9 +219,15 @@ export default function JobTracePage() {
         {tab === "provenance" && (
           <div>
             {trace.final_answer && (
-              <div className="rounded border p-4 mb-4" style={{ background: "#10121a", borderColor: "rgba(255,255,255,0.07)" }}>
+              <div
+                className="rounded border p-4 mb-4"
+                style={{
+                  background: "linear-gradient(165deg, rgba(124,106,247,0.08) 0%, #10121a 42%)",
+                  borderColor: "rgba(124,106,247,0.25)",
+                }}
+              >
                 <div className="text-[10px] font-semibold tracking-widest uppercase mb-2" style={{ color: "#4a5168" }}>Final answer</div>
-                <div className="text-[13px] text-white leading-relaxed whitespace-pre-wrap">{trace.final_answer}</div>
+                <div className="text-[13px] text-white leading-relaxed whitespace-pre-wrap font-sans">{trace.final_answer}</div>
               </div>
             )}
             {(!trace.provenance_map || trace.provenance_map.length === 0) && (
@@ -232,7 +238,7 @@ export default function JobTracePage() {
                 <tr style={{ borderBottom: "0.5px solid rgba(255,255,255,0.07)", color: "#4a5168" }}>
                   <th className="text-left font-mono font-normal pb-2 pr-4">sentence</th>
                   <th className="text-left font-mono font-normal pb-2 pr-4">agent</th>
-                  <th className="text-left font-mono font-normal pb-2 pr-4">chunk</th>
+                  <th className="text-left font-mono font-normal pb-2 pr-4">source</th>
                   <th className="text-right font-mono font-normal pb-2">conf</th>
                 </tr>
               </thead>

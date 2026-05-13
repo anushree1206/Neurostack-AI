@@ -5,7 +5,7 @@ import hashlib
 import time
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional, Any
+from typing import Optional, Any, Callable
 from backend.context_manager import ContextBudgetManager, AgentContext
 from backend.streaming import SSEStream
 from backend import config
@@ -94,6 +94,8 @@ class BaseAgent(ABC):
         model: str = None,
         max_tokens: int = 4096,
         stream: bool = True,
+        stream_token_filter: Callable[[str, str], str] | None = None,
+        on_stream_tick: Callable[[str], None] | None = None,
     ) -> str:
         model = model or config.AGENT_MODEL
         start = time.monotonic()
@@ -111,7 +113,15 @@ class BaseAgent(ABC):
                 if delta:
                     full_response += delta
                     budget_rem = self.ctx.remaining_budget if self.ctx else 0
-                    self.stream.emit_token(self.agent_id, delta, budget_rem)
+                    to_emit = (
+                        stream_token_filter(full_response, delta)
+                        if stream_token_filter
+                        else delta
+                    )
+                    if to_emit:
+                        self.stream.emit_token(self.agent_id, to_emit, budget_rem)
+                    if on_stream_tick:
+                        on_stream_tick(full_response)
         else:
             resp = await self.client.chat.completions.create(
                 model=model,

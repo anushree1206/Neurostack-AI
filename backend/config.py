@@ -39,6 +39,20 @@ MAX_TOOL_RETRIES = 2
 CONTEXT_BUDGET_DEFAULT = 8000
 JOB_QUEUE_SIZE = 100
 
+
+def _env_int(name: str, default: int) -> int:
+    raw = _clean_env(os.environ.get(name))
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+# Synthesis: allow long research-style outputs (override via env for smaller models / rate limits).
+SYNTHESIS_MAX_COMPLETION_TOKENS = _env_int("SYNTHESIS_MAX_COMPLETION_TOKENS", 12000)
+
 # Submission mode: expose only the five assignment endpoints. Default off so the
 # bundled dashboard (prompts, eval rerun, observability pages) works without extra env.
 STRICT_API_FIVE_ENDPOINTS = _env_bool("STRICT_API_FIVE_ENDPOINTS", default=False)

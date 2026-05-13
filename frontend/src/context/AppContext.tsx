@@ -1,10 +1,21 @@
 import { createContext, useContext, useState, useCallback, useRef, ReactNode } from "react";
 
+const SYNTHESIS_JSON_MARKER = "<<<STRUCT_JSON>>>";
+
+/** Hide trailing structured JSON from live synthesis token stream (server also filters). */
+function appendSynthesisVisible(prev: string, token: string): string {
+  const combined = prev + token;
+  const i = combined.indexOf(SYNTHESIS_JSON_MARKER);
+  return i === -1 ? combined : combined.slice(0, i);
+}
+
 export interface SSEEvent {
   type: string;
   agent_id?: string;
   token?: string;
   budget_remaining?: number;
+  section?: string;
+  progress_percent?: number;
   tool_name?: string;
   attempt?: number;
   status?: string;
@@ -136,10 +147,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
             if (evt.type === "job_created" && evt.job_id) {
               setJobId(evt.job_id);
             } else if (evt.type === "token" && evt.agent_id) {
-              setTokenBuffers(prev => ({
-                ...prev,
-                [evt.agent_id!]: (prev[evt.agent_id!] || "") + (evt.token || ""),
-              }));
+              setTokenBuffers(prev => {
+                const prior = prev[evt.agent_id!] || "";
+                const addition = evt.token || "";
+                const next =
+                  evt.agent_id === "synthesis"
+                    ? appendSynthesisVisible(prior, addition)
+                    : prior + addition;
+                return { ...prev, [evt.agent_id!]: next };
+              });
             } else if (evt.type === "budget" && evt.agent_id) {
               setBudgets(prev => ({
                 ...prev,
@@ -166,7 +182,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
               setActivity(prev => [...prev, evt]);
             } else if (evt.type === "done") {
               streamCompleted = true;
-              setFinalAnswer(evt.answer || "");
+              const ans = evt.answer || "";
+              const cut = ans.indexOf(SYNTHESIS_JSON_MARKER);
+              setFinalAnswer(cut === -1 ? ans : ans.slice(0, cut).trim());
               setError(null);
               setStreaming(false);
               // Dynamic routing may omit agents (e.g. rag→critique→synthesis). Never leave them stuck on "waiting".

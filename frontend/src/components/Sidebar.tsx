@@ -18,7 +18,7 @@ const SECTIONS: Section[] = [
     title: "PIPELINE",
     items: [
       { label: "Live run", path: "/", badge: 1 },
-      { label: "Job history", path: "/jobs", badge: 24 },
+      { label: "Job history", path: "/jobs" },
       { label: "Execution traces", path: "/traces" },
     ],
   },

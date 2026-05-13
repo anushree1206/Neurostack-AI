@@ -22,7 +22,7 @@ _DEFAULT_ROUTING_PLAN: list[dict] = [
     {"step": 1, "agent": "decomposition", "reason": "default routing", "budget_allocation": 4000},
     {"step": 2, "agent": "rag", "reason": "retrieve relevant info", "budget_allocation": 6000},
     {"step": 3, "agent": "critique", "reason": "verify outputs", "budget_allocation": 5000},
-    {"step": 4, "agent": "synthesis", "reason": "final answer", "budget_allocation": 6000},
+    {"step": 4, "agent": "synthesis", "reason": "final answer", "budget_allocation": 12000},
 ]
 
 
@@ -63,13 +63,13 @@ def _fallback_plan_for_query(query: str, reason: str) -> dict:
             {"step": 1, "agent": "decomposition", "reason": "adversarial request decomposition", "budget_allocation": 4500},
             {"step": 2, "agent": "critique", "reason": "early adversarial guardrails", "budget_allocation": 5000},
             {"step": 3, "agent": "rag", "reason": "retrieve grounded context after guardrails", "budget_allocation": 6000},
-            {"step": 4, "agent": "synthesis", "reason": "final safe answer", "budget_allocation": 6500},
+            {"step": 4, "agent": "synthesis", "reason": "final safe answer", "budget_allocation": 12000},
         ]
     elif complexity == "low":
         routing_plan = [
             {"step": 1, "agent": "rag", "reason": "direct factual retrieval path", "budget_allocation": 5500},
             {"step": 2, "agent": "critique", "reason": "verify factual consistency", "budget_allocation": 4500},
-            {"step": 3, "agent": "synthesis", "reason": "merge and finalize", "budget_allocation": 5500},
+            {"step": 3, "agent": "synthesis", "reason": "merge and finalize", "budget_allocation": 12000},
         ]
     else:
         routing_plan = [dict(s) for s in _DEFAULT_ROUTING_PLAN]
@@ -135,7 +135,7 @@ def _normalize_routing_plan(raw: dict) -> list[dict]:
         without_syn = [s for s in normalized if s["agent"] != "synthesis"]
         syn_budget = next(
             (s["budget_allocation"] for s in normalized if s["agent"] == "synthesis"),
-            6000,
+            12000,
         )
         normalized = without_syn + [{
             "step": len(without_syn) + 1,
@@ -174,7 +174,7 @@ Respond with valid JSON:
     {"step": 1, "agent": "decomposition", "reason": "query is complex and ambiguous", "budget_allocation": 4000},
     {"step": 2, "agent": "rag", "reason": "needs retrieval for factual claims", "budget_allocation": 6000},
     {"step": 3, "agent": "critique", "reason": "verify claims before synthesis", "budget_allocation": 5000},
-    {"step": 4, "agent": "synthesis", "reason": "merge and finalize", "budget_allocation": 6000}
+    {"step": 4, "agent": "synthesis", "reason": "merge and finalize", "budget_allocation": 12000}
   ],
   "complexity": "low|medium|high",
   "adversarial_risk": "none|low|high",
@@ -196,10 +196,20 @@ Respond with valid JSON:
             )
         except Exception as e:
             logger.exception("Orchestrator LLM call failed, using default routing: %s", e)
-            return _fallback_plan_for_query(
-                query,
-                f"default plan: orchestrator LLM error ({e})",
-            )
+            error_str = str(e).lower()
+            
+            # Check for 429 rate limit errors specifically
+            if "429" in error_str or "rate limit" in error_str or "too many requests" in error_str:
+                logger.warning("Rate limit detected, using conservative routing plan")
+                return _fallback_plan_for_query(
+                    query,
+                    f"rate_limit_fallback: 429 error - using minimal agent pipeline to avoid further limits",
+                )
+            else:
+                return _fallback_plan_for_query(
+                    query,
+                    f"orchestrator_llm_error: {e} - using default fallback routing",
+                )
 
         try:
             start = response.find("{")
@@ -260,15 +270,45 @@ Respond with valid JSON:
             )
             agent.default_budget = budget
 
-            try:
-                await agent.run(shared_ctx)
-            except Exception as e:
-                logger.exception("Agent %s failed: %s", agent_name, e)
-                # Keep pipeline alive: mark a policy violation and continue to downstream agents.
-                self.stream.emit_policy_violation(agent_name, f"Agent failed, used degraded path: {str(e)}")
-                if agent_name not in shared_ctx.agent_outputs:
-                    shared_ctx.agent_outputs[agent_name] = {"error": str(e), "degraded": True}
-                self.stream.emit_agent_done(agent_name, "Completed with degraded fallback")
+            max_retries = 1
+            last_error = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    await agent.run(shared_ctx)
+                    break  # Success, exit retry loop
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e).lower()
+                    
+                    # Check for 429 rate limit errors specifically
+                    if "429" in error_str or "rate limit" in error_str or "too many requests" in error_str:
+                        if attempt < max_retries:
+                            logger.warning("Agent %s hit rate limit (attempt %d/%d), retrying...", agent_name, attempt + 1, max_retries + 1)
+                            # Add exponential backoff for rate limits
+                            import asyncio
+                            await asyncio.sleep(2 ** attempt)  # 1s, then 2s backoff
+                            continue
+                        else:
+                            logger.error("Agent %s failed after retries due to rate limiting: %s", agent_name, e)
+                            self.stream.emit_policy_violation(agent_name, f"Rate limit exceeded after {max_retries} retries: {str(e)}")
+                    else:
+                        logger.exception("Agent %s failed (attempt %d/%d): %s", agent_name, attempt + 1, max_retries + 1, e)
+                        if attempt < max_retries:
+                            continue
+                        else:
+                            self.stream.emit_policy_violation(agent_name, f"Agent failed after {max_retries} retries: {str(e)}")
+                    
+                    # Keep pipeline alive: mark a policy violation and continue to downstream agents
+                    if agent_name not in shared_ctx.agent_outputs:
+                        shared_ctx.agent_outputs[agent_name] = {
+                            "error": str(last_error),
+                            "degraded": True,
+                            "retry_attempts": attempt,
+                            "error_type": "rate_limit" if "429" in error_str else "general"
+                        }
+                    self.stream.emit_agent_done(agent_name, f"Completed with degraded fallback after {attempt} retries")
+                    break
 
             for violation in self.budget_manager.all_violations():
                 self.stream.emit_policy_violation(agent_name, violation)

@@ -137,11 +137,6 @@ function PipelineBar({ agents }: { agents: AgentState[] }) {
 
 // ─── Panel 2: SSE Token Stream + Event Log ────────────────────────────────────
 
-function renderToken(token: string, agentId: string): React.ReactNode {
-  const color = agentColor(agentId);
-  return <span style={{ color }}>{token}</span>;
-}
-
 function EventLogLine({ evt }: { evt: SSEEvent }) {
   if (evt.type === "routing") {
     return (
@@ -193,6 +188,20 @@ function EventLogLine({ evt }: { evt: SSEEvent }) {
       </div>
     );
   }
+  if (evt.type === "synthesis_progress") {
+    return (
+      <div className="flex items-center gap-2 py-0.5">
+        <span className="font-mono text-[11px]" style={{ color: "var(--c-purple)" }}>synthesis</span>
+        <Tag color="var(--c-purple)">[{evt.agent_id || "synthesis"}]</Tag>
+        <span className="font-mono text-[11px] text-white/70 flex-1 min-w-0 truncate">
+          {evt.section}
+          {typeof evt.progress_percent === "number" && (
+            <span style={{ color: "#4a5168" }}> · {evt.progress_percent.toFixed(0)}%</span>
+          )}
+        </span>
+      </div>
+    );
+  }
   if (evt.type === "budget") {
     const used = evt.used || 0;
     const budget = evt.budget || 8000;
@@ -241,12 +250,16 @@ function TokenStreamPanel() {
       {/* Token display */}
       <div
         ref={streamRef}
-        className={`px-3 py-2 font-mono text-[12px] leading-relaxed overflow-auto border-b ${streaming && activeAgent ? "cursor-blink" : ""}`}
+        className={`px-3 py-2 text-[13px] leading-relaxed overflow-auto border-b ${streaming && activeAgent ? "cursor-blink" : ""} ${activeAgent === "synthesis" || (!activeAgent && finalAnswer) ? "font-sans tracking-tight" : "font-mono"}`}
         style={{
-          height: 140,
+          minHeight: 200,
+          height: 240,
           borderColor: "rgba(255,255,255,0.07)",
-          color: "rgba(255,255,255,0.85)",
+          color: "rgba(255,255,255,0.9)",
           wordBreak: "break-word",
+          background: activeAgent === "synthesis"
+            ? "linear-gradient(180deg, rgba(124,106,247,0.06) 0%, transparent 48%)"
+            : undefined,
         }}
       >
         {!displayTokens && !streaming && (
@@ -255,13 +268,17 @@ function TokenStreamPanel() {
         {activeAgent && tokenBuffers[activeAgent] && (
           <>
             <Tag color={agentColor(activeAgent)}>[{activeAgent}]</Tag>{" "}
-            <span style={{ color: "rgba(255,255,255,0.85)" }}>{tokenBuffers[activeAgent].slice(-3000)}</span>
+            <span className="whitespace-pre-wrap" style={{ color: "rgba(255,255,255,0.88)" }}>
+              {tokenBuffers[activeAgent].slice(-12000)}
+            </span>
           </>
         )}
         {!activeAgent && finalAnswer && (
           <>
-            <Tag color="var(--c-teal)">[synthesis]</Tag>{" "}
-            <span style={{ color: "rgba(255,255,255,0.85)" }}>{finalAnswer.slice(-3000)}</span>
+            <Tag color="var(--c-teal)">[final]</Tag>{" "}
+            <span className="whitespace-pre-wrap" style={{ color: "rgba(255,255,255,0.88)" }}>
+              {finalAnswer.slice(-12000)}
+            </span>
           </>
         )}
       </div>
@@ -647,7 +664,7 @@ function ProvenanceMap({ jobId }: { jobId: string | null }) {
             <tr style={{ borderBottom: "0.5px solid rgba(255,255,255,0.07)", color: "#4a5168" }}>
               <th className="text-left font-mono font-normal py-1.5 pr-3">sentence</th>
               <th className="text-left font-mono font-normal py-1.5 pr-3 shrink-0">source agent</th>
-              <th className="text-left font-mono font-normal py-1.5 pr-3 shrink-0">chunk</th>
+              <th className="text-left font-mono font-normal py-1.5 pr-3 shrink-0">source</th>
               <th className="text-right font-mono font-normal py-1.5 shrink-0">confidence</th>
             </tr>
           </thead>

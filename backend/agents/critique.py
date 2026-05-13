@@ -16,14 +16,32 @@ class CritiqueAgent(BaseAgent):
     default_budget = 5000
 
     def _default_system_prompt(self) -> str:
-        return """You are a Critique Agent. Your job is to rigorously review agent outputs at the claim level.
+        return """You are an expert Critique Agent performing rigorous claim-level analysis of agent outputs with professional standards.
 
-Rules:
-1. Review each output claim-by-claim, NOT as a whole
-2. Assign a confidence score (0-1) per claim
-3. Flag SPECIFIC text spans you disagree with (quote the exact text)
-4. Do NOT reject entire outputs — target specific problematic claims
-5. Be honest about uncertainty
+CORE REQUIREMENTS:
+1. Analyze each output claim-by-claim with granular confidence scoring
+2. Provide specific confidence scores (0.0-1.0) with detailed reasoning
+3. Flag EXACT text spans with contradiction highlighting and span analysis
+4. Evaluate logical consistency, factual accuracy, and reasoning quality
+5. Assess source attribution and evidence quality
+
+CONFIDENCE SCORING CRITERIA:
+- 0.9-1.0: High confidence - well-supported, accurate, properly attributed
+- 0.7-0.8: Good confidence - mostly accurate with minor issues
+- 0.5-0.6: Moderate confidence - some concerns or limitations
+- 0.3-0.4: Low confidence - significant issues or insufficient support
+- 0.0-0.2: Very low confidence - major problems or contradictions
+
+CONTRADICTION ANALYSIS:
+- Identify specific text spans that contradict each other
+- Explain the nature of contradictions (factual, logical, temporal)
+- Provide context for why contradictions are problematic
+- Suggest resolutions when possible
+
+VERDICT CLASSIFICATION:
+- "accept": High-quality output with minimal issues
+- "needs_revision": Good overall but requires specific corrections
+- "reject": Major problems requiring substantial revision
 
 Respond with valid JSON:
 {
@@ -34,12 +52,30 @@ Respond with valid JSON:
       "claim": "exact text of the claim being reviewed",
       "confidence": 0.0-1.0,
       "verdict": "accept|flag|reject",
-      "reason": "why",
-      "suggested_correction": "optional correction if verdict is flag/reject"
+      "reason": "detailed explanation of confidence assessment",
+      "suggested_correction": "specific correction if needed",
+      "evidence_quality": "high|medium|low",
+      "attribution_score": 0.0-1.0
+    }
+  ],
+  "contradiction_analysis": [
+    {
+      "span_1": "exact text span 1",
+      "span_2": "exact text span 2", 
+      "contradiction_type": "factual|logical|temporal|methodological",
+      "severity": "minor|moderate|major",
+      "explanation": "why these spans contradict",
+      "resolution_suggestion": "how to resolve"
     }
   ],
   "flagged_spans": ["exact text span 1", "exact text span 2"],
-  "summary": "one-sentence critique summary",
+  "quality_metrics": {
+    "factual_accuracy": 0.0-1.0,
+    "logical_consistency": 0.0-1.0,
+    "source_attribution": 0.0-1.0,
+    "reasoning_quality": 0.0-1.0
+  },
+  "summary": "comprehensive critique summary with key findings",
   "overall_verdict": "accept|needs_revision|reject"
 }"""
 
@@ -63,6 +99,25 @@ Respond with valid JSON:
             start = response.find("{")
             end = response.rfind("}") + 1
             parsed = json.loads(response[start:end])
+            
+            # Ensure all required fields are present for enhanced structure
+            if "contradiction_analysis" not in parsed:
+                parsed["contradiction_analysis"] = []
+            if "quality_metrics" not in parsed:
+                parsed["quality_metrics"] = {
+                    "factual_accuracy": parsed.get("overall_confidence", 0.6),
+                    "logical_consistency": parsed.get("overall_confidence", 0.6),
+                    "source_attribution": 0.7,
+                    "reasoning_quality": parsed.get("overall_confidence", 0.6)
+                }
+            
+            # Ensure claim_reviews have required fields
+            for claim_review in parsed.get("claim_reviews", []):
+                if "evidence_quality" not in claim_review:
+                    claim_review["evidence_quality"] = "medium"
+                if "attribution_score" not in claim_review:
+                    claim_review["attribution_score"] = 0.7
+                    
         except Exception:
             preview = output_text[:220].replace("\n", " ")
             parsed = {
@@ -75,9 +130,18 @@ Respond with valid JSON:
                         "verdict": "accept",
                         "reason": "Fallback critique path: no explicit contradiction detected in deterministic check.",
                         "suggested_correction": "",
+                        "evidence_quality": "medium",
+                        "attribution_score": 0.7,
                     }
                 ],
+                "contradiction_analysis": [],
                 "flagged_spans": [],
+                "quality_metrics": {
+                    "factual_accuracy": 0.6,
+                    "logical_consistency": 0.6,
+                    "source_attribution": 0.7,
+                    "reasoning_quality": 0.6
+                },
                 "summary": (response[:200] if response else "Fallback critique used due to transient model/tool error."),
                 "overall_verdict": "accept",
             }
