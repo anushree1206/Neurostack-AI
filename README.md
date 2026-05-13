@@ -44,6 +44,36 @@ NeuroStack AI is a sophisticated multi-agent orchestration system designed for p
 
 ---
 
+## Screenshots
+
+Live dashboard captures from the NeuroStack AI UI (pipeline run, execution detail, evaluation metrics, and trace history).
+
+### Pipeline dashboard
+
+Live run with multi-stage agent pipeline, SSE token stream, tool calls, and context budgets.
+
+![Pipeline dashboard](docs/screenshots/01-pipeline-execution.png)
+
+### Agent pipeline and execution log
+
+Orchestrated stages (decomposition, RAG, critique, synthesis) with tool usage and eval summary.
+
+![Agent pipeline and execution log](docs/screenshots/02-execution-trace.png)
+
+### Evaluation dashboard
+
+Eval run summary with weighted metrics and per–test-case scores.
+
+![Evaluation dashboard](docs/screenshots/03-evaluation-results.png)
+
+### Execution traces
+
+Recent traces with event and tool counts and quick navigation to full traces.
+
+![Execution traces](docs/screenshots/04-execution-traces.png)
+
+---
+
 ## System Architecture
 
 ### High-Level Design
