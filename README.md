@@ -7,6 +7,33 @@
 
 NeuroStack AI is a sophisticated multi-agent orchestration system designed for production environments. It enables seamless collaboration between specialized AI agents through dynamic routing, shared context management, and real-time streaming capabilities. The system features a robust evaluation framework with 15 comprehensive test cases, human-in-the-loop prompt optimization, and enterprise-grade monitoring and observability.
 
+---
+
+# Screenshots
+
+## Pipeline Dashboard
+
+![Pipeline Dashboard](screenshots/Screenshot%202026-05-13%20162758.png)
+
+---
+
+## Agent Pipeline & SSE Streaming
+
+![Agent Pipeline](screenshots/Screenshot%202026-05-13%20162909.png)
+
+---
+
+## Job History & Query Runs
+
+![Job History](screenshots/Screenshot%202026-05-13%20162941.png)
+
+---
+
+## Evaluation Dashboard
+
+![Evaluation Dashboard](screenshots/Screenshot%202026-05-13%20163030.png)
+
+---
 ### Key Achievements
 
 - **Real-time Multi-Agent Coordination**: Dynamic agent orchestration with intelligent routing based on query complexity
