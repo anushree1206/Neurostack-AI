@@ -287,22 +287,22 @@ class EvaluationPipeline:
         final_output = trace.outputs_received[-1] if trace.outputs_received else {"error": "No output"}
         
         # 1. Answer Correctness (0.0 - 1.0)
-        answer_correctness = self._score_answer_correctness(test_case, final_output)
-        
+        answer_correctness = self.score_answer_correctness(test_case, final_output)
+
         # 2. Citation Accuracy (0.0 - 1.0)
-        citation_accuracy = self._score_citation_accuracy(test_case, final_output)
-        
+        citation_accuracy = self.score_citation_accuracy(test_case, final_output)
+
         # 3. Contradiction Resolution (0.0 - 1.0)
-        contradiction_resolution = self._score_contradiction_resolution(test_case, final_output)
-        
+        contradiction_resolution = self.score_contradiction_resolution(test_case, final_output)
+
         # 4. Tool Selection Efficiency (0.0 - 1.0)
-        tool_efficiency = self._score_tool_efficiency(trace)
-        
+        tool_efficiency = self.score_tool_efficiency(trace)
+
         # 5. Context Budget Compliance (0.0 - 1.0)
-        context_compliance = self._score_context_compliance(trace)
-        
+        context_compliance = self.score_context_compliance(trace)
+
         # 6. Critique Agreement Rate (0.0 - 1.0)
-        critique_agreement = self._score_critique_agreement(test_case, final_output)
+        critique_agreement = self.score_critique_agreement(test_case, final_output)
         
         # Calculate overall weighted score
         weights = {
@@ -313,14 +313,18 @@ class EvaluationPipeline:
             "context_compliance": 0.10,
             "critique_agreement": 0.10
         }
-        
-        overall_score = sum(
-            weights[dim] * getattr(self, f"score_{dim}")(test_case, final_output, trace)
-            for dim, weight in weights.items()
+
+        overall_score = (
+            weights["answer_correctness"] * answer_correctness +
+            weights["citation_accuracy"] * citation_accuracy +
+            weights["contradiction_resolution"] * contradiction_resolution +
+            weights["tool_efficiency"] * tool_efficiency +
+            weights["context_compliance"] * context_compliance +
+            weights["critique_agreement"] * critique_agreement
         )
-        
+
         # Generate justification
-        justification = self._generate_justification(test_case, weights, overall_score)
+        justification = self.generate_justification(test_case, weights, overall_score)
         
         return EvaluationScore(
             test_id=test_case.test_id,

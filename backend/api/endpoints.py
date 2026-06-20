@@ -91,11 +91,31 @@ class MultiAgentAPI:
                 latest = await get_latest_eval(db)
                 if not latest:
                     raise HTTPException(status_code=404, detail=_api_error("EVAL_NOT_FOUND", "No evaluation run found")["detail"])
-                failed_case_ids = [r["case_id"] for r in latest.get("results", []) if not r.get("passed", True)]
+
+                results = latest.get("results", [])
+                failed_case_ids = [r["case_id"] for r in results if not r.get("passed", True)]
                 if not failed_case_ids:
-                    return {"message": "No failed cases in latest run", "results": [], "case_ids": []}
-                rerun_summary = await run_eval(db=db, case_ids=failed_case_ids)
-                return {"message": "Re-evaluation completed", "case_ids": failed_case_ids, "run": rerun_summary}
+                    sorted_by_score = sorted(results, key=lambda r: r.get("score_overall", 1.0))
+                    failed_case_ids = [r["case_id"] for r in sorted_by_score[:3]]
+
+                prompt_overrides = {}
+                stmt = select(models.PromptVersion).where(models.PromptVersion.status == "approved")
+                pv_result = await db.execute(stmt)
+                for pv in pv_result.scalars().all():
+                    prompt_overrides[f"{pv.agent_id}_system"] = pv.proposed_prompt
+
+                rerun_summary = await run_eval(
+                    db=db,
+                    case_ids=failed_case_ids,
+                    prompt_overrides=prompt_overrides if prompt_overrides else None,
+                )
+                await self._ensure_prompt_rewrite_candidate(db, rerun_summary)
+                return {
+                    "message": "Re-evaluation completed",
+                    "case_ids": failed_case_ids,
+                    "prompt_overrides_applied": list(prompt_overrides.keys()),
+                    "run": rerun_summary,
+                }
 
         # Job index for dashboard (works in strict mode; trace detail remains GET /api/trace/{job_id}).
         @self.app.get("/api/jobs")
@@ -286,26 +306,71 @@ class MultiAgentAPI:
                     }
 
     async def _ensure_prompt_rewrite_candidate(self, db, eval_summary: dict[str, Any]):
-        failed = [r for r in eval_summary.get("results", []) if not r.get("passed", True)]
-        if not failed:
+        results = eval_summary.get("results", [])
+        if not results:
             return
-        latest_failed = failed[0]
+
+        failed = [r for r in results if not r.get("passed", True)]
+        if failed:
+            target = failed[0]
+            trigger_reason = f"Generated from failed case {target.get('case_id')}."
+        else:
+            target = min(results, key=lambda r: r.get("score_overall", 1.0))
+            trigger_reason = (
+                f"Generated from lowest-scoring case {target.get('case_id')} "
+                f"(score: {target.get('score_overall', 0):.3f}). All cases passed — targeting weakest area for improvement."
+            )
+
+        dimensions = [
+            "score_correctness", "score_citation", "score_contradiction",
+            "score_tool_efficiency", "score_budget_compliance", "score_critique_agreement",
+        ]
+        worst_dim = min(dimensions, key=lambda d: target.get(d, 1.0))
+        worst_val = target.get(worst_dim, 0)
+
+        dim_to_agent = {
+            "score_correctness": "synthesis",
+            "score_citation": "rag",
+            "score_contradiction": "synthesis",
+            "score_tool_efficiency": "orchestrator",
+            "score_budget_compliance": "orchestrator",
+            "score_critique_agreement": "critique",
+        }
+        target_agent = dim_to_agent.get(worst_dim, "synthesis")
+
+        originals = {
+            "orchestrator": "Route queries dynamically based on complexity and risk assessment.",
+            "rag": "Perform multi-hop retrieval with citation tracking across sources.",
+            "critique": "Review outputs claim-by-claim with confidence scores.",
+            "synthesis": "Merge all agent outputs into coherent research-grade reports.",
+        }
+        proposals = {
+            "orchestrator": "Route queries dynamically; add explicit budget guards and retry-aware scheduling for rate-limited models.",
+            "rag": "Perform multi-hop retrieval with mandatory source-level attribution; require at least 2 independent sources per key claim.",
+            "critique": "Review outputs claim-by-claim; flag unsupported claims with severity levels; require explicit contradiction resolution.",
+            "synthesis": "Merge all agent outputs into coherent reports; resolve every flagged contradiction explicitly; enforce minimum depth per section.",
+        }
+
+        original = originals.get(target_agent, originals["synthesis"])
+        proposed = proposals.get(target_agent, proposals["synthesis"])
+
         prompt_id = str(uuid.uuid4())
-        proposed = models.PromptVersion(
+        pv = models.PromptVersion(
             id=prompt_id,
-            agent_id="orchestrator",
-            dimension="score_overall",
-            original_prompt="Improve adversarial robustness and citation tracking.",
-            proposed_prompt="Increase explicit guardrails for injections and force multi-hop citation checks before synthesis.",
+            agent_id=target_agent,
+            dimension=worst_dim,
+            original_prompt=original,
+            proposed_prompt=proposed,
             diff=(
-                "--- old\n+++ new\n@@\n"
-                "- Improve adversarial robustness and citation tracking.\n"
-                "+ Increase explicit guardrails for injections and force multi-hop citation checks before synthesis.\n"
+                f"--- {target_agent}_original\n+++ {target_agent}_proposed\n@@\n"
+                f"- {original}\n"
+                f"+ {proposed}\n"
             ),
-            justification=f"Generated from failed case {latest_failed.get('case_id')}.",
+            justification=trigger_reason,
             status="pending",
             eval_run_id=eval_summary.get("run_id"),
+            delta_score=round(worst_val - 1.0, 3),
         )
-        db.add(proposed)
+        db.add(pv)
         await db.commit()
 

@@ -103,6 +103,42 @@ async def _process_job(job_id: str):
             for routing in shared_ctx.routing_log:
                 log_event("orchestrator", "routing_decision", routing)
 
+            for agent_id, output in shared_ctx.agent_outputs.items():
+                log_event(agent_id, "agent_start", {"agent_id": agent_id, "status": "started"})
+                log_event(agent_id, "agent_done", {
+                    "agent_id": agent_id,
+                    "status": "completed",
+                    "output_keys": list(output.keys()) if isinstance(output, dict) else [],
+                })
+
+            for agent_id in shared_ctx.agent_outputs:
+                ctx = budget_mgr.get_context(agent_id)
+                if ctx:
+                    log_event(agent_id, "budget", {
+                        "agent_id": agent_id,
+                        "used": ctx.used_tokens,
+                        "budget": ctx.max_budget,
+                        "remaining": ctx.remaining_budget,
+                    })
+                    for v in ctx.policy_violations:
+                        log_event(agent_id, "policy_violation", {
+                            "agent_id": agent_id,
+                            "message": v,
+                        })
+
+            for tool_log in shared_ctx.tool_call_history:
+                log_event(
+                    tool_log.get("agent_id", "unknown"),
+                    "tool_call",
+                    {
+                        "tool": tool_log.get("tool"),
+                        "attempt": tool_log.get("attempt", 0),
+                        "accepted": tool_log.get("accepted"),
+                        "latency_ms": tool_log.get("latency_ms"),
+                        "failure_mode": tool_log.get("failure_mode"),
+                    },
+                )
+
             job.status = "done"
             job.final_answer = shared_ctx.final_answer or ""
             job.provenance_map = shared_ctx.provenance_map

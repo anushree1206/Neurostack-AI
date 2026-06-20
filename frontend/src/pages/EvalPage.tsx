@@ -261,7 +261,12 @@ export default function EvalPage() {
               <div className="flex-1 overflow-auto px-4 py-3 space-y-3">
                 {DIMENSIONS.map(d => {
                   const val = (selected as Record<string, number>)[d.key] || 0;
-                  const just = selected.justifications?.[d.key.replace("score_", "")] || "";
+                  const rawKey = d.key.replace("score_", "");
+                  const JUSTIFICATION_KEY_MAP: Record<string, string> = {
+                    citation: "citation_accuracy",
+                    contradiction: "contradiction_resolution",
+                  };
+                  const just = selected.justifications?.[JUSTIFICATION_KEY_MAP[rawKey] || rawKey] || "";
                   return (
                     <div key={d.key}>
                       <div className="flex items-center gap-2 mb-1">

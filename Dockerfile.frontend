@@ -4,6 +4,9 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml ./
 COPY frontend/ ./frontend/
 COPY lib/ ./lib/
+COPY backend/package.json ./backend/package.json
+COPY backend/tsconfig.json ./backend/tsconfig.json
+COPY scripts/package.json ./scripts/package.json
 
 RUN npm install -g pnpm && pnpm install --no-frozen-lockfile
 RUN pnpm --filter @workspace/dashboard run build
